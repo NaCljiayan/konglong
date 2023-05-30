@@ -1,0 +1,447 @@
+import os
+import sys
+import random
+import pygame
+
+'''屏幕大小'''
+SCREENSIZE = (600, 150)
+'''FPS'''
+FPS = 60
+'''音频素材路径'''
+AUDIO_PATHS = {
+    'die': os.path.join(os.getcwd(), 'resources/audios/die.wav'),
+    'jump': os.path.join(os.getcwd(), 'resources/audios/jump.wav'),
+    'point': os.path.join(os.getcwd(), 'resources/audios/point.wav')
+}
+'''图片素材路径'''
+IMAGE_PATHS = {
+    'cacti': [
+        os.path.join(os.getcwd(), 'resources/images/cacti-big.png'),
+        os.path.join(os.getcwd(), 'resources/images/cacti-small.png')
+    ],
+    'cloud': os.path.join(os.getcwd(), 'resources/images/cloud.png'),
+    'dino': [
+        os.path.join(os.getcwd(), 'resources/images/dino.png'),
+        os.path.join(os.getcwd(), 'resources/images/dino_ducking.png')
+    ],
+    'gameover': os.path.join(os.getcwd(), 'resources/images/gameover.png'),
+    'ground': os.path.join(os.getcwd(), 'resources/images/ground.png'),
+    'numbers': os.path.join(os.getcwd(), 'resources/images/numbers.png'),
+    'ptera': os.path.join(os.getcwd(), 'resources/images/ptera.png'),
+    'replay': os.path.join(os.getcwd(), 'resources/images/replay.png')
+}
+'''背景颜色'''
+BACKGROUND_COLOR = (235, 235, 235)
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+'''加速值'''
+ADD_SPEED = 1
+
+
+class Dinosaur(pygame.sprite.Sprite):   # 小恐龙
+    def __init__(self, imagepaths, position=(40, 147), size=[(44, 47), (59, 47)], **kwargs):
+        pygame.sprite.Sprite.__init__(self)
+        # 导入所有图片
+        self.images = []
+        image = pygame.image.load(imagepaths[0])
+        for i in range(5):
+            self.images.append(pygame.transform.scale(image.subsurface((i*88, 0), (88, 95)), size[0]))
+        image = pygame.image.load(imagepaths[1])
+        for i in range(2):
+            self.images.append(pygame.transform.scale(image.subsurface((i*118, 0), (118, 95)), size[1]))
+        self.image_idx = 0
+        self.image = self.images[self.image_idx]
+        self.rect = self.image.get_rect()
+        self.rect.left, self.rect.bottom = position
+        self.mask = pygame.mask.from_surface(self.image)
+        # 定义一些必要的变量
+        self.init_position = position
+        self.refresh_rate = 5
+        self.refresh_counter = 0
+        self.speed = 11.5
+        self.gravity = 0.6
+        self.is_jumping = False
+        self.is_ducking = False
+        self.is_dead = False
+        self.movement = [0, 0]
+    '''跳跃'''
+    def jump(self, sounds):
+        if self.is_dead or self.is_jumping:
+            return
+        sounds['jump'].play()
+        self.is_jumping = True
+        self.movement[1] = -1 * self.speed
+    '''低头'''
+    def duck(self):
+        if self.is_jumping or self.is_dead:
+            return
+        self.is_ducking = True
+    '''不低头'''
+    def unduck(self):
+        self.is_ducking = False
+    '''死掉了'''
+    def die(self, sounds):
+        if self.is_dead:
+            return
+        sounds['die'].play()
+        self.is_dead = True
+    '''将恐龙画到屏幕'''
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
+    '''载入当前状态的图片'''
+    def loadImage(self):
+        self.image = self.images[self.image_idx]
+        rect = self.image.get_rect()
+        rect.left, rect.top = self.rect.left, self.rect.top
+        self.rect = rect
+        self.mask = pygame.mask.from_surface(self.image)
+    '''更新小恐龙'''
+    def update(self):
+        if self.is_dead:
+            self.image_idx = 4
+            self.loadImage()
+            return
+        if self.is_jumping:
+            self.movement[1] += self.gravity
+            self.image_idx = 0
+            self.loadImage()
+            self.rect = self.rect.move(self.movement)
+            if self.rect.bottom >= self.init_position[1]:
+                self.rect.bottom = self.init_position[1]
+                self.is_jumping = False
+        elif self.is_ducking:
+            if self.refresh_counter % self.refresh_rate == 0:
+                self.refresh_counter = 0
+                self.image_idx = 5 if self.image_idx == 6 else 6
+                self.loadImage()
+        else:
+            if self.refresh_counter % self.refresh_rate == 0:
+                self.refresh_counter = 0
+                if self.image_idx == 1:
+                    self.image_idx = 2
+                elif self.image_idx == 2:
+                    self.image_idx = 3
+                else:
+                    self.image_idx = 1
+                self.loadImage()
+        self.refresh_counter += 1
+
+
+class Cactus(pygame.sprite.Sprite):  # 仙人掌
+    def __init__(self, imagepaths, addspeed=False, position=(600, 147), sizes=[(40, 40), (40, 40)], **kwargs):
+        pygame.sprite.Sprite.__init__(self)
+        # 导入图片
+        self.images = []
+        image = pygame.image.load(imagepaths[0])
+        for i in range(3):
+            self.images.append(pygame.transform.scale(image.subsurface((i*101, 0), (101, 101)), sizes[0]))
+        image = pygame.image.load(imagepaths[1])
+        for i in range(3):
+            self.images.append(pygame.transform.scale(image.subsurface((i*68, 0), (68, 70)), sizes[1]))
+        self.image = random.choice(self.images)
+        self.rect = self.image.get_rect()
+        self.rect.left, self.rect.bottom = position
+        self.mask = pygame.mask.from_surface(self.image)
+        # 定义一些必要的变量
+        self.speed = -10
+        if addspeed:
+            self.speed -= ADD_SPEED
+    '''画到屏幕上'''
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
+    '''更新'''
+    def update(self):
+        self.rect = self.rect.move([self.speed, 0])
+        if self.rect.right < 0:
+            self.kill()
+
+
+class Ptera(pygame.sprite.Sprite):  # 飞龙
+    def __init__(self, imagepath, position, size=(46, 40), addspeed=False, **kwargs):
+        pygame.sprite.Sprite.__init__(self)
+        # 导入图片
+        self.images = []
+        image = pygame.image.load(imagepath)
+        for i in range(2):
+            self.images.append(pygame.transform.scale(image.subsurface((i*92, 0), (92, 81)), size))
+        self.image_idx = 0
+        self.image = self.images[self.image_idx]
+        self.rect = self.image.get_rect()
+        self.rect.left, self.rect.centery = position
+        self.mask = pygame.mask.from_surface(self.image)
+        # 定义一些必要的变量
+        self.speed = -10
+        if addspeed:
+            self.speed -= ADD_SPEED
+        self.refresh_rate = 10
+        self.refresh_counter = 0
+    '''画到屏幕上'''
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
+    '''更新'''
+    def update(self):
+        if self.refresh_counter % self.refresh_rate == 0:
+            self.refresh_counter = 0
+            self.image_idx = (self.image_idx + 1) % len(self.images)
+            self.loadImage()
+        self.rect = self.rect.move([self.speed, 0])
+        if self.rect.right < 0:
+            self.kill()
+        self.refresh_counter += 1
+    '''载入当前状态的图片'''
+    def loadImage(self):
+        self.image = self.images[self.image_idx]
+        rect = self.image.get_rect()
+        rect.left, rect.top = self.rect.left, self.rect.top
+        self.rect = rect
+        self.mask = pygame.mask.from_surface(self.image)
+
+
+class Ground(pygame.sprite.Sprite):  # 地板
+    def __init__(self, imagepath, position, addspeed=False, **kwargs):
+        pygame.sprite.Sprite.__init__(self)
+        # 导入图片
+        self.image_0 = pygame.image.load(imagepath)
+        self.rect_0 = self.image_0.get_rect()
+        self.rect_0.left, self.rect_0.bottom = position
+        self.image_1 = pygame.image.load(imagepath)
+        self.rect_1 = self.image_1.get_rect()
+        self.rect_1.left, self.rect_1.bottom = self.rect_0.right, self.rect_0.bottom
+        # 定义一些必要的参数
+        self.speed = -10
+        if addspeed:
+            self.speed -= ADD_SPEED
+    '''更新地板'''
+    def update(self):
+        self.rect_0.left += self.speed
+        self.rect_1.left += self.speed
+        if self.rect_0.right < 0:
+            self.rect_0.left = self.rect_1.right
+        if self.rect_1.right < 0:
+            self.rect_1.left = self.rect_0.right
+    '''将地板画到屏幕'''
+    def draw(self, screen):
+        screen.blit(self.image_0, self.rect_0)
+        screen.blit(self.image_1, self.rect_1)
+
+
+class Cloud(pygame.sprite.Sprite):  # 云
+    def __init__(self, imagepath, position, addspeed=False, **kwargs):
+        pygame.sprite.Sprite.__init__(self)
+        # 导入图片
+        self.image = pygame.image.load(imagepath)
+        self.rect = self.image.get_rect()
+        self.rect.left, self.rect.top = position
+        # 定义一些必要的参数
+        self.speed = -1
+        if addspeed:
+            self.speed -= ADD_SPEED
+    '''将云画到屏幕上'''
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
+    '''更新云'''
+    def update(self):
+        self.rect = self.rect.move([self.speed, 0])
+        if self.rect.right < 0:
+            self.kill()
+
+
+class Scoreboard(pygame.sprite.Sprite):  # 记分板
+    def __init__(self, imagepath, position, size=(11, 13), is_highest=False, bg_color=None, **kwargs):
+        pygame.sprite.Sprite.__init__(self)
+        # 导入图片
+        self.images = []
+        image = pygame.image.load(imagepath)
+        for i in range(12):
+            self.images.append(pygame.transform.scale(image.subsurface((i*20, 0), (20, 24)), size))
+        if is_highest:
+            self.image = pygame.Surface((size[0]*8, size[1]))
+        else:
+            self.image = pygame.Surface((size[0]*5, size[1]))
+        self.rect = self.image.get_rect()
+        self.rect.left, self.rect.top = position
+        # 一些必要的变量
+        self.is_highest = is_highest
+        self.bg_color = bg_color
+        self.score = '00000'
+    '''设置得分'''
+    def set(self, score):
+        self.score = str(score).zfill(5)
+    '''画到屏幕上'''
+    def draw(self, screen):
+        self.image.fill(self.bg_color)
+        for idx, digital in enumerate(list(self.score)):
+            digital_image = self.images[int(digital)]
+            if self.is_highest:
+                self.image.blit(digital_image, ((idx+3)*digital_image.get_rect().width, 0))
+            else:
+                self.image.blit(digital_image, (idx*digital_image.get_rect().width, 0))
+        if self.is_highest:
+            self.image.blit(self.images[-2], (0, 0))
+            self.image.blit(self.images[-1], (digital_image.get_rect().width, 0))
+        screen.blit(self.image, self.rect)
+
+
+def GameStartInterface(screen, sounds):  # 游戏开始界面
+    dino = Dinosaur(IMAGE_PATHS['dino'])
+    ground = pygame.image.load(IMAGE_PATHS['ground']).subsurface((0, 0), (83, 19))
+    rect = ground.get_rect()
+    rect.left, rect.bottom = SCREENSIZE[0]/20, SCREENSIZE[1]
+    clock = pygame.time.Clock()
+    press_flag = False
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
+                    press_flag = True
+                    dino.jump(sounds)
+        dino.update()
+        screen.fill(BACKGROUND_COLOR)
+        screen.blit(ground, rect)
+        dino.draw(screen)
+        pygame.display.update()
+        clock.tick(FPS)
+        if (not dino.is_jumping) and press_flag:
+            return True
+
+
+def GameEndInterface(screen):  # 游戏结束界面
+    replay_image = pygame.image.load(IMAGE_PATHS['replay'])
+    replay_image = pygame.transform.scale(replay_image, (35, 31))
+    replay_image_rect = replay_image.get_rect()
+    replay_image_rect.centerx = SCREENSIZE[0] / 2
+    replay_image_rect.top = SCREENSIZE[1] * 0.52
+    gameover_image = pygame.image.load(IMAGE_PATHS['gameover'])
+    gameover_image = pygame.transform.scale(gameover_image, (190, 11))
+    gameover_image_rect = gameover_image.get_rect()
+    gameover_image_rect.centerx = SCREENSIZE[0] / 2
+    gameover_image_rect.centery = SCREENSIZE[1] * 0.35
+    clock = pygame.time.Clock()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
+                    return True
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                if replay_image_rect.collidepoint(mouse_pos):
+                    return True
+        screen.blit(replay_image, replay_image_rect)
+        screen.blit(gameover_image, gameover_image_rect)
+        pygame.display.update()
+        clock.tick(FPS)
+
+
+
+'''main'''
+def main(highest_score):
+    # 游戏初始化
+    pygame.init()
+    screen = pygame.display.set_mode(SCREENSIZE)
+    pygame.display.set_caption('恐龙跳跃')
+    # 导入所有声音文件
+    sounds = {}
+    for key, value in AUDIO_PATHS.items():
+        sounds[key] = pygame.mixer.Sound(value)
+    # 游戏开始界面
+    GameStartInterface(screen, sounds)
+    # 定义一些游戏中必要的元素和变量
+    score = 0
+    if_add_speed = False
+    score_board = Scoreboard(IMAGE_PATHS['numbers'], position=(534, 15), bg_color=BACKGROUND_COLOR)
+    highest_score = highest_score
+    highest_score_board = Scoreboard(IMAGE_PATHS['numbers'], position=(435, 15), bg_color=BACKGROUND_COLOR, is_highest=True)
+    dino = Dinosaur(IMAGE_PATHS['dino'])
+    ground = Ground(IMAGE_PATHS['ground'], position=(0, SCREENSIZE[1]))
+    cloud_sprites_group = pygame.sprite.Group()
+    cactus_sprites_group = pygame.sprite.Group()
+    ptera_sprites_group = pygame.sprite.Group()
+    add_obstacle_timer = 0
+    score_timer = 0
+    # 游戏主循环
+    clock = pygame.time.Clock()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
+                    dino.jump(sounds)
+                elif event.key == pygame.K_DOWN:
+                    dino.duck()
+            elif event.type == pygame.KEYUP and event.key == pygame.K_DOWN:
+                dino.unduck()
+        screen.fill(BACKGROUND_COLOR)
+        # --随机添加云
+        if len(cloud_sprites_group) < 5 and random.randrange(0, 300) == 10:
+            cloud_sprites_group.add(Cloud(IMAGE_PATHS['cloud'], position=(SCREENSIZE[0], random.randrange(30, 75)),
+                                          addspeed=if_add_speed))
+        # --随机添加仙人掌/飞龙
+        add_obstacle_timer += 1
+        if add_obstacle_timer > random.randrange(50, 150):
+            add_obstacle_timer = 0
+            random_value = random.randrange(0, 10)
+            if random_value >= 5 and random_value <= 7:
+                cactus_sprites_group.add(Cactus(IMAGE_PATHS['cacti'], if_add_speed))
+            else:
+                position_ys = [SCREENSIZE[1]*0.82, SCREENSIZE[1]*0.75, SCREENSIZE[1]*0.60, SCREENSIZE[1]*0.20]
+                ptera_sprites_group.add(Ptera(IMAGE_PATHS['ptera'], position=(600, random.choice(position_ys)),
+                                              addspeed=if_add_speed))
+        # --更新游戏元素
+        dino.update()
+        ground.update()
+        cloud_sprites_group.update()
+        cactus_sprites_group.update()
+        ptera_sprites_group.update()
+        score_timer += 1
+        if score_timer > (FPS//12):
+            score_timer = 0
+            score += 1
+            score = min(score, 99999)
+            if score > highest_score:
+                highest_score = score
+            if score % 100 == 0:
+                sounds['point'].play()
+            if score % 200 == 0:
+                if_add_speed = True
+
+        # --碰撞检测
+        for item in cactus_sprites_group:
+            if pygame.sprite.collide_mask(dino, item):
+                dino.die(sounds)
+        for item in ptera_sprites_group:
+            if pygame.sprite.collide_mask(dino, item):
+                dino.die(sounds)
+        # --将游戏元素画到屏幕上
+        dino.draw(screen)
+        ground.draw(screen)
+        cloud_sprites_group.draw(screen)
+        cactus_sprites_group.draw(screen)
+        ptera_sprites_group.draw(screen)
+        score_board.set(score)
+        highest_score_board.set(highest_score)
+        score_board.draw(screen)
+        highest_score_board.draw(screen)
+        # --更新屏幕
+        pygame.display.update()
+        clock.tick(FPS)
+        # --游戏是否结束
+        if dino.is_dead:
+            break
+    # 游戏结束界面
+    return GameEndInterface(screen), highest_score
+
+
+'''run'''
+if __name__ == '__main__':
+    highest_score = 0
+    while True:
+        flag, highest_score = main(highest_score)
+        if not flag: break
